@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+  <title>GigBook Server</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      background: #0a0a0a;
+      color: #f0f0f0;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .header {
+      background: #111;
+      padding: 16px;
+      border-bottom: 1px solid #2a2a2a;
+      text-align: center;
+    }
+
+    .logo {
+      font-size: 24px;
+      font-weight: bold;
+      color: #e8ff3a;
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      font-size: 11px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px;
+      background: #111;
+      border-bottom: 1px solid #2a2a2a;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #666;
+    }
+
+    .status-dot.running { background: #4caf50; box-shadow: 0 0 8px rgba(76,175,80,0.5); }
+    .status-dot.stopped { background: #ff5533; }
+
+    .status-text {
+      font-size: 12px;
+      font-family: monospace;
+    }
+
+    .content {
+      flex: 1;
+      padding: 16px;
+      overflow-y: auto;
+    }
+
+    .section {
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+
+    .section-title {
+      font-size: 10px;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #666;
+      margin-bottom: 12px;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #2a2a2a;
+    }
+
+    .info-row:last-child { border-bottom: none; }
+
+    .info-label {
+      font-size: 12px;
+      color: #999;
+    }
+
+    .info-value {
+      font-size: 12px;
+      font-family: monospace;
+      color: #e8ff3a;
+    }
+
+    .url-box {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-family: monospace;
+      font-size: 13px;
+      color: #e8ff3a;
+      margin-bottom: 8px;
+      word-break: break-all;
+      cursor: pointer;
+    }
+
+    .url-box:hover {
+      border-color: #e8ff3a;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn-primary {
+      background: #e8ff3a;
+      color: #000;
+    }
+
+    .btn-primary:hover { background: #d4e833; }
+
+    .btn-secondary {
+      background: #222;
+      color: #fff;
+      border: 1px solid #333;
+    }
+
+    .btn-secondary:hover { border-color: #555; }
+
+    .btn-danger {
+      background: #ff5533;
+      color: #fff;
+    }
+
+    .btn-danger:hover { background: #e64a2e; }
+
+    .token-box {
+      background: #1a1a1a;
+      border: 1px solid #e8ff3a;
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-family: monospace;
+      font-size: 11px;
+      color: #e8ff3a;
+      word-break: break-all;
+      cursor: pointer;
+    }
+
+    .console {
+      background: #000;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 12px;
+      font-family: monospace;
+      font-size: 10px;
+      color: #4caf50;
+      height: 100px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .console .error { color: #ff5533; }
+    .console .info { color: #666; }
+
+    .footer {
+      padding: 12px;
+      text-align: center;
+      border-top: 1px solid #2a2a2a;
+      background: #111;
+    }
+
+    .footer-text {
+      font-size: 10px;
+      color: #444;
+    }
+
+    .copy-toast {
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #4caf50;
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 12px;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+    }
+
+    .copy-toast.show { opacity: 1; }
+
+    .instructions {
+      font-size: 11px;
+      color: #666;
+      line-height: 1.6;
+    }
+
+    .instructions strong { color: #fff; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">🎸 GigBook Server</div>
+    <div class="subtitle">v0.2</div>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-dot" id="statusDot"></div>
+    <span class="status-text" id="statusText">Iniciando...</span>
+  </div>
+
+  <div class="content">
+    <div class="section">
+      <div class="section-title">Conexion</div>
+      <div class="url-box" id="urlBox" title="Clic para copiar">
+        Obteniendo IP...
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btnOpen">Abrir en navegador</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Token de sincronizacion</div>
+      <div class="token-box" id="tokenBox" title="Clic para copiar">
+        Obteniendo...
+      </div>
+      <p class="instructions">
+        Copia este token en la app GigBook de tu telefono para sincronizar.
+      </p>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Servidor</div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btnStart">Iniciar</button>
+        <button class="btn btn-danger" id="btnStop">Detener</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Consola</div>
+      <div class="console" id="console">
+        <span class="info">GigBook Server iniciando...</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Instrucciones</div>
+      <p class="instructions">
+        1. Abre <strong>http://TU-IP:3000</strong> en tu telefono<br>
+        2. Escanea el QR con la camara o ingresa la URL<br>
+        3. Copia el token y pegalo en Ajustes de la app<br>
+        4. Toca "Obtener" para sincronizar
+      </p>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span class="footer-text">Minimizar para dejar corriendo en segundo plano</span>
+  </div>
+
+  <div class="copy-toast" id="toast">Copiado al portapapeles!</div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const urlBox = document.getElementById('urlBox');
+    const tokenBox = document.getElementById('tokenBox');
+    const consoleEl = document.getElementById('console');
+    const btnOpen = document.getElementById('btnOpen');
+    const btnStart = document.getElementById('btnStart');
+    const btnStop = document.getElementById('btnStop');
+    const toast = document.getElementById('toast');
+
+    let serverInfo = null;
+    let token = null;
+
+    function copyToClipboard(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2000);
+      });
+    }
+
+    function addConsoleLine(text, type = '') {
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = text;
+      consoleEl.appendChild(line);
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    }
+
+    ipcRenderer.on('server-status', (event, status) => {
+      if (status.running) {
+        statusDot.className = 'status-dot running';
+        statusText.textContent = 'Servidor activo';
+        btnStart.disabled = true;
+        btnStop.disabled = false;
+        addConsoleLine('Servidor iniciado correctamente', 'info');
+      } else {
+        statusDot.className = 'status-dot stopped';
+        statusText.textContent = 'Servidor detenido';
+        btnStart.disabled = false;
+        btnStop.disabled = true;
+        addConsoleLine(`Servidor detenido (codigo: ${status.code})`, 'error');
+      }
+    });
+
+    ipcRenderer.on('server-info', async (event, info) => {
+      serverInfo = info;
+      urlBox.textContent = info.urlLocal;
+      btnOpen.onclick = () => ipcRenderer.invoke('open-url', info.urlLocal);
+      urlBox.onclick = () => copyToClipboard(info.urlLocal);
+      addConsoleLine(`URL local: ${info.urlLocal}`, 'info');
+      addConsoleLine(`Puerto: ${info.port}`, 'info');
+
+      // Obtener token
+      try {
+        const response = await fetch(`${info.url}/setup`);
+        const html = await response.text();
+        const match = html.match(/AUTH_TOKEN = '([^']+)'/);
+        if (match) {
+          token = match[1];
+          tokenBox.textContent = token;
+          tokenBox.onclick = () => copyToClipboard(token);
+          addConsoleLine('Token obtenido', 'info');
+        }
+      } catch (e) {
+        addConsoleLine('Esperando servidor...', 'info');
+      }
+    });
+
+    ipcRenderer.on('server-output', (event, data) => {
+      const lines = data.split('\n').filter(l => l.trim());
+      lines.forEach(line => {
+        if (line.includes('error') || line.includes('Error') || line.includes('⚠️')) {
+          addConsoleLine(line, 'error');
+        } else if (line.includes('🎸') || line.includes('http') || line.includes('Token')) {
+          addConsoleLine(line);
+        } else if (line.startsWith('📁') || line.startsWith('📄') || line.startsWith('🔑')) {
+          addConsoleLine(line, 'info');
+        }
+      });
+    });
+
+    btnStart.onclick = () => {
+      addConsoleLine('Iniciando servidor...', 'info');
+      ipcRenderer.invoke('start-server');
+    };
+
+    btnStop.onclick = () => {
+      ipcRenderer.invoke('stop-server');
+    };
+  </script>
+</body>
+</html>
