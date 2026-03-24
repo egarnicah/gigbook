@@ -1383,6 +1383,20 @@ export default function App() {
 
   const goStage = (setlistId, songIdx) => setStage({ setlistId, songIdx });
 
+  // ── Debounced auto-push: persiste cambios locales al servidor ─────────────
+  const autoSyncTimer = useRef(null);
+  const syncPushRef = useRef(syncPush);
+  useEffect(() => { syncPushRef.current = syncPush; }, [syncPush]);
+
+  useEffect(() => {
+    if (serverStatus !== 'online') return;
+    if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
+    autoSyncTimer.current = setTimeout(() => {
+      syncPushRef.current();
+    }, 1500);
+    return () => { if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current); };
+  }, [setlists, songs, serverStatus]);
+
   return (
     <AppCtx.Provider value={ctx}>
       <Suspense fallback={null}>

@@ -8,8 +8,9 @@
  * - Rate limiting por IP
  * - Validación de datos en sync
  * - writeAtomic() con try/catch y validación de éxito
- * - QR generado server-side (sin CDN)
+ * - QR generado server-side (qrcode npm)
  * - getLocalIP() filtra APIPA/Docker/VPN
+ * - Rutas universales (pkg-aware)
  */
 
 const express = require('express');
@@ -21,10 +22,19 @@ const crypto  = require('crypto');
 const qrcode  = require('qrcode');
 const http    = require('http');
 
+// ─── RUTAS UNIVERSALES (pkg-aware) ─────────────────────────────────────────
+function getAppBasePath() {
+  if (process.pkg) {
+    return path.dirname(process.execPath);
+  }
+  return __dirname;
+}
+
 // ─── CONFIG ─────────────────────────────────────────────────────────────────
 
 const PORT      = process.env.PORT || 3000;
-const DATA_DIR  = path.join(__dirname, 'data');
+const APP_BASE  = getAppBasePath();
+const DATA_DIR  = path.join(APP_BASE, 'data');
 const TOKEN_FILE = path.join(DATA_DIR, 'token.json');
 const FILES     = {
   songs    : path.join(DATA_DIR, 'songs.json'),
@@ -54,7 +64,7 @@ const RATE_LIMIT_MAX = 100; // requests por ventana
 function bootstrap() {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
-    console.log('📁  Carpeta data/ creada');
+    console.log('📁  Carpeta data/ creada en:', DATA_DIR);
   }
   const defaults = {
     songs    : [],
@@ -309,7 +319,7 @@ app.get('/api/ping', (req, res) => {
   const setlists = readJSON(FILES.setlists) || [];
   res.json({
     status      : 'ok',
-    version     : '0.2',
+    version     : '0.3',
     songCount   : songs.length,
     setlistCount: setlists.length,
     serverTime  : Date.now(),
@@ -763,9 +773,21 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`  IP WiFi:  ${ip}`);
   console.log(`  Token:    ${AUTH_TOKEN.substring(0, 16)}...`);
   console.log('  ─────────────────────────────────────');
-  console.log('  QR generado en /setup (server-side)\n');
+  console.log('  QR disponible en /setup\n');
 
-  qrcode.generate(url, { small: true });
+  try {
+    console.log(qrcode.toString(url, { type: 'terminal', small: true }));
+  } catch {}
 
   console.log('\n  Ctrl+C para detener el servidor\n');
+});
+
+// ─── GLOBAL ERROR HANDLERS ───────────────────────────────────────────────────
+process.on('uncaughtException', (err) => {
+  console.error('[GigBook] Excepcion no capturada:', err.message);
+  console.error('[GigBook] Stack:', err.stack);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[GigBook] Promesa rechazada sin handler:', reason);
 });
