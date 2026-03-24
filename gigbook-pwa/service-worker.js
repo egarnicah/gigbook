@@ -4,7 +4,7 @@
  * Actualización controlada por el usuario.
  */
 
-const VERSION     = 'gigbook-v2';
+const VERSION     = 'gigbook-v3';
 const CACHE_NAME  = `${VERSION}-assets`;
 const API_PREFIX  = '/api/';
 const STATIC_ASSETS = [

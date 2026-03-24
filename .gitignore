@@ -3,6 +3,10 @@ node_modules/
 
 # Build output
 dist/
+*.exe
+
+# Server client build (copiado desde gigbook-pwa/dist)
+gigbook-server/client/
 
 # Data (sync from server)
 data/

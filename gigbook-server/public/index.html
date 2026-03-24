@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+  <!-- PWA -->
+  <meta name="theme-color" content="#0a0a0a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="GigBook" />
+  <meta name="mobile-web-app-capable" content="yes" />
+
+  <!-- iOS icons (generados desde icon-512.png) -->
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-192.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-192.png" />
+
+  <!-- Manifest -->
+  <link rel="manifest" href="/assets/manifest-CdbIN2US.json" />
+
+  <title>GigBook</title>
+
+  <style>
+    /* Pantalla de carga mientras React hidrata */
+    html, body { margin: 0; padding: 0; background: #0a0a0a; height: 100%; }
+    #root { height: 100%; }
+    #splash {
+      position: fixed; inset: 0; background: #0a0a0a;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 12px;
+      z-index: 9999; transition: opacity 0.3s;
+    }
+    #splash.hide { opacity: 0; pointer-events: none; }
+    #splash-logo {
+      font-family: 'Courier New', monospace; font-size: 28px;
+      font-weight: 700; color: #e8ff3a; letter-spacing: -0.02em;
+    }
+    #splash-sub {
+      font-family: sans-serif; font-size: 11px; font-weight: 600;
+      letter-spacing: 0.15em; text-transform: uppercase; color: #444;
+    }
+
+  </style>
+  <script type="module" crossorigin src="/assets/index-DY_Fl8eS.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/vendor-wGySg1uH.js">
+  <link rel="stylesheet" crossorigin href="/assets/index-BA6D_ex4.css">
+</head>
+<body>
+
+  <!-- Splash screen -->
+  <div id="splash">
+      <div id="splash-logo">GigBook</div>
+      <div id="splash-sub">Cargando v0.2…</div>
+  </div>
+
+
+  <!-- React mount point -->
+  <div id="root"></div>
+
+  <!-- Vite / build entry -->
+
+  <!-- Service Worker registration -->
+  <script>
+    // ── Ocultar splash cuando React monta ──
+    window.__gigbookReady = function () {
+      const splash = document.getElementById('splash');
+      if (splash) {
+        splash.classList.add('hide');
+        setTimeout(() => splash.remove(), 400);
+      }
+    };
+
+    // ── Service Worker ──
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', async () => {
+        try {
+          const reg = await navigator.serviceWorker.register('/service-worker.js');
+
+        } catch (err) {
+          console.warn('[GigBook SW] Error al registrar:', err);
+        }
+      });
+
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!refreshing) { refreshing = true; window.location.reload(); }
+      });
+    }
+  </script>
+</body>
+</html>

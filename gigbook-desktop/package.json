@@ -16,30 +16,49 @@
       "output": "dist"
     },
     "files": [
-      "../gigbook-server/**/*",
-      "!**/node_modules/.cache"
+      "main.js",
+      "index.html",
+      "icon.png",
+      "icon.ico"
+    ],
+    "extraResources": [
+      {
+        "from": "../gigbook-server",
+        "to": "gigbook-server",
+        "filter": [
+          "**/*",
+          "!node_modules/.cache",
+          "!data"
+        ]
+      }
     ],
     "win": {
       "target": [
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "icon.ico"
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "icon": "icon.icns"
     },
     "portable": {
       "artifactName": "GigBook-Server-Portable.exe"
     }
   },
-  "dependencies": {
-    "electron": "^28.0.0"
-  },
   "devDependencies": {
-    "electron-builder": "^24.9.1"
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "pkg": "^5.8.1"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
   }
 }

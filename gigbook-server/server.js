@@ -1,17 +1,15 @@
 /**
- * GigBook Server — v0.2
- * Servidor local Wi-Fi para sincronizar la PWA entre teléfono y computadora.
+ * GigBook Server — v0.3
+ * Servidor local Wi-Fi para sincronizar la PWA.
  *
  * Seguridad:
  * - CORS restrictivo (solo IPs de la red local)
  * - Token de autenticación simple
  * - Rate limiting por IP
  * - Validación de datos en sync
- *
- * Uso:
- *   node server.js
- *   PORT=4000 node server.js
- *   TOKEN=mi-secreto node server.js
+ * - writeAtomic() con try/catch y validación de éxito
+ * - QR generado server-side (sin CDN)
+ * - getLocalIP() filtra APIPA/Docker/VPN
  */
 
 const express = require('express');
@@ -20,7 +18,8 @@ const fs      = require('fs');
 const path    = require('path');
 const os      = require('os');
 const crypto  = require('crypto');
-const qrcode  = require('qrcode-terminal');
+const qrcode  = require('qrcode');
+const http    = require('http');
 
 // ─── CONFIG ─────────────────────────────────────────────────────────────────
 
@@ -90,11 +89,31 @@ function writeAtomic(file, data) {
   const bak = file + '.bak';
   const json = JSON.stringify(data, null, 2);
 
-  if (fs.existsSync(file)) {
-    fs.copyFileSync(file, bak);
+  try {
+    if (fs.existsSync(file)) {
+      fs.copyFileSync(file, bak);
+    }
+    fs.writeFileSync(tmp, json, 'utf8');
+
+    // Verificar que el tmp fue escrito correctamente antes de renombrar
+    const stat = fs.statSync(tmp);
+    if (stat.size !== Buffer.byteLength(json, 'utf8')) {
+      throw new Error(`writeAtomic: tamaño incorrecto en ${file}`);
+    }
+
+    fs.renameSync(tmp, file);
+
+    // Verificar que el archivo final existe y es correcto
+    if (!fs.existsSync(file)) {
+      throw new Error(`writeAtomic: archivo no existe después de rename: ${file}`);
+    }
+  } catch (err) {
+    // Si hay error, intentar restaurar desde backup
+    if (fs.existsSync(bak)) {
+      try { fs.copyFileSync(bak, file); } catch {}
+    }
+    throw err;
   }
-  fs.writeFileSync(tmp, json, 'utf8');
-  fs.renameSync(tmp, file);
 }
 
 // ─── RATE LIMITING ─────────────────────────────────────────────────────────
@@ -118,15 +137,19 @@ function checkRateLimit(ip) {
 
 // ─── CORS RESTRICTIVO ───────────────────────────────────────────────────────
 
+const VIRTUAL_PATTERN = /hyper[-_v]|vmware|virtualbox|docker|vethernet|loopback|pseudo|teredo|isatap|6to4/i;
+
 function getLocalIPs() {
   const interfaces = os.networkInterfaces();
   const ips = [];
 
   for (const [name, addrs] of Object.entries(interfaces)) {
-    if (/vmware|virtualbox|docker|lo/i.test(name)) continue;
+    if (VIRTUAL_PATTERN.test(name)) continue;
     for (const addr of addrs) {
       if (addr.family === 'IPv4' && !addr.internal) {
-        const parts = addr.address.split('.');
+        const ip = addr.address;
+        if (ip.startsWith('169.254.') || ip.startsWith('172.')) continue;
+        const parts = ip.split('.');
         ips.push(`${parts[0]}.${parts[1]}.${parts[2]}.0/24`);
       }
     }
@@ -138,11 +161,16 @@ const allowedOrigins = getLocalIPs();
 
 const corsOptions = {
   origin: function(origin, callback) {
-    // Requests sin origin (mobile apps, Postman) verificar por IP
+    // Requests sin origin (mobile apps, Postman)
     if (!origin) {
       return callback(null, true);
     }
-    
+
+    // Permitir localhost para desarrollo
+    if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      return callback(null, true);
+    }
+
     // Verificar si el origin es de la red local
     const isLocal = allowedOrigins.some(prefix => {
       const [p0, p1, p2] = prefix.split('.');
@@ -150,11 +178,7 @@ const corsOptions = {
              origin.startsWith(`https://${p0}.${p1}.${p2}.`);
     });
 
-    if (isLocal) {
-      callback(null, true);
-    } else {
-      callback(new Error('Origen no permitido'));
-    }
+    callback(null, isLocal);
   },
   methods: ['GET', 'POST', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Client-Version'],
@@ -226,21 +250,38 @@ function mergeByTimestamp(serverItems, clientItems) {
 
 function getLocalIP() {
   const interfaces = os.networkInterfaces();
-  const candidates = [];
+  let wifiIP = null;
+  let ethIP  = null;
+
+  const BLOCKED = [
+    /^169\.254\./,         // APIPA / link-local
+    /^172\.(1[6-9]|2\d|3[01])\./, // Docker bridge (172.16–172.31)
+    /^10\.(0|255)\./,      // VPN a veces usa 10.0.x.x
+  ];
+  const isBlocked = (ip) => BLOCKED.some(r => r.test(ip));
+
+  const PREFER_WIFI  = /wlan|wi[-_]?fi|wifi|wireless/i;
+  const BLOCK_IFACE  = /vmware|virtualbox|docker|hyper[-_]v|container|veth|loopback|pseudo|teredo|isatap|6to4/i;
 
   for (const [name, addrs] of Object.entries(interfaces)) {
-    if (/vmware|virtualbox|docker|lo/i.test(name)) continue;
+    if (BLOCK_IFACE.test(name)) continue;
+
+    const isWifi = PREFER_WIFI.test(name);
+
     for (const addr of addrs) {
-      if (addr.family === 'IPv4' && !addr.internal) {
-        candidates.push({ name, address: addr.address });
+      if (addr.family !== 'IPv4' || addr.internal) continue;
+      const ip = addr.address;
+      if (isBlocked(ip)) continue;
+
+      if (isWifi && !wifiIP) {
+        wifiIP = ip;
+      } else if (!ethIP) {
+        ethIP = ip;
       }
     }
   }
 
-  if (candidates.length === 0) return 'localhost';
-
-  const preferred = candidates.find(c => /^(en|eth|wlan)/i.test(c.name));
-  return (preferred || candidates[0]).address;
+  return wifiIP || ethIP || 'localhost';
 }
 
 // ─── APP EXPRESS ──────────────────────────────────────────────────────────────
@@ -293,63 +334,68 @@ app.post('/api/sync', authMiddleware, (req, res) => {
   const { songs: clientSongs, setlists: clientSetlists, settings: clientSettings } = req.body;
   const conflicts = [];
 
-  if (clientSongs !== undefined) {
-    if (!Array.isArray(clientSongs)) {
-      return res.status(400).json({ error: 'invalid_data', message: 'songs debe ser un array' });
-    }
-    
-    const validSongs = clientSongs.filter(s => {
-      if (!validateSong(s)) {
-        console.warn(`⚠️  Canción inválida ignorada: ${s.id}`);
-        return false;
+  try {
+    if (clientSongs !== undefined) {
+      if (!Array.isArray(clientSongs)) {
+        return res.status(400).json({ error: 'invalid_data', message: 'songs debe ser un array' });
       }
-      return true;
+      
+      const validSongs = clientSongs.filter(s => {
+        if (!validateSong(s)) {
+          console.warn(`⚠️  Canción inválida ignorada: ${s.id}`);
+          return false;
+        }
+        return true;
+      });
+
+      const serverSongs = readJSON(FILES.songs) || [];
+      const merged = mergeByTimestamp(serverSongs, validSongs);
+      
+      for (const cs of validSongs) {
+        const ss = serverSongs.find(s => s.id === cs.id);
+        if (ss && ss.updatedAt && cs.updatedAt && ss.updatedAt !== cs.updatedAt) {
+          conflicts.push({ type: 'song', id: cs.id, name: cs.name, winner: cs.updatedAt > ss.updatedAt ? 'client' : 'server' });
+        }
+      }
+      writeAtomic(FILES.songs, merged);
+    }
+
+    if (clientSetlists !== undefined) {
+      if (!Array.isArray(clientSetlists)) {
+        return res.status(400).json({ error: 'invalid_data', message: 'setlists debe ser un array' });
+      }
+      
+      const validSetlists = clientSetlists.filter(sl => {
+        if (!validateSetlist(sl)) {
+          console.warn(`⚠️  Setlist inválido ignorado: ${sl.id}`);
+          return false;
+        }
+        return true;
+      });
+
+      const serverSetlists = readJSON(FILES.setlists) || [];
+      const merged = mergeByTimestamp(serverSetlists, validSetlists);
+      writeAtomic(FILES.setlists, merged);
+    }
+
+    if (clientSettings !== undefined) {
+      if (!validateSettings(clientSettings)) {
+        return res.status(400).json({ error: 'invalid_data', message: 'settings inválidos' });
+      }
+      const serverSettings = readJSON(FILES.settings) || {};
+      const mergedSettings = { ...serverSettings, ...clientSettings };
+      writeAtomic(FILES.settings, mergedSettings);
+    }
+
+    res.json({
+      ok        : true,
+      conflicts,
+      serverTime: Date.now(),
     });
-
-    const serverSongs = readJSON(FILES.songs) || [];
-    const merged = mergeByTimestamp(serverSongs, validSongs);
-    
-    for (const cs of validSongs) {
-      const ss = serverSongs.find(s => s.id === cs.id);
-      if (ss && ss.updatedAt && cs.updatedAt && ss.updatedAt !== cs.updatedAt) {
-        conflicts.push({ type: 'song', id: cs.id, name: cs.name, winner: cs.updatedAt > ss.updatedAt ? 'client' : 'server' });
-      }
-    }
-    writeAtomic(FILES.songs, merged);
+  } catch (err) {
+    console.error('❌ Error en writeAtomic:', err.message);
+    res.status(500).json({ error: 'write_error', message: 'Error al guardar datos' });
   }
-
-  if (clientSetlists !== undefined) {
-    if (!Array.isArray(clientSetlists)) {
-      return res.status(400).json({ error: 'invalid_data', message: 'setlists debe ser un array' });
-    }
-    
-    const validSetlists = clientSetlists.filter(sl => {
-      if (!validateSetlist(sl)) {
-        console.warn(`⚠️  Setlist inválido ignorado: ${sl.id}`);
-        return false;
-      }
-      return true;
-    });
-
-    const serverSetlists = readJSON(FILES.setlists) || [];
-    const merged = mergeByTimestamp(serverSetlists, validSetlists);
-    writeAtomic(FILES.setlists, merged);
-  }
-
-  if (clientSettings !== undefined) {
-    if (!validateSettings(clientSettings)) {
-      return res.status(400).json({ error: 'invalid_data', message: 'settings inválidos' });
-    }
-    const serverSettings = readJSON(FILES.settings) || {};
-    const mergedSettings = { ...serverSettings, ...clientSettings };
-    writeAtomic(FILES.settings, mergedSettings);
-  }
-
-  res.json({
-    ok        : true,
-    conflicts,
-    serverTime: Date.now(),
-  });
 });
 
 // ── Songs CRUD ────────────────────────────────────────────────────────────────
@@ -373,16 +419,21 @@ app.post('/api/songs/:id', authMiddleware, (req, res) => {
 });
 
 app.delete('/api/songs/:id', authMiddleware, (req, res) => {
-  const songs   = readJSON(FILES.songs) || [];
-  const updated = songs.filter(s => s.id !== req.params.id);
-  writeAtomic(FILES.songs, updated);
-  const setlists = readJSON(FILES.setlists) || [];
-  const updatedSl = setlists.map(sl => ({
-    ...sl,
-    songs: sl.songs.filter(id => id !== req.params.id),
-  }));
-  writeAtomic(FILES.setlists, updatedSl);
-  res.json({ ok: true });
+  try {
+    const songs   = readJSON(FILES.songs) || [];
+    const updated = songs.filter(s => s.id !== req.params.id);
+    const setlists = readJSON(FILES.setlists) || [];
+    const updatedSl = setlists.map(sl => ({
+      ...sl,
+      songs: sl.songs.filter(id => id !== req.params.id),
+    }));
+    writeAtomic(FILES.songs, updated);
+    writeAtomic(FILES.setlists, updatedSl);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('❌ Error al eliminar canción:', err.message);
+    res.status(500).json({ error: 'write_error', message: 'Error al eliminar' });
+  }
 });
 
 // ── Setlists CRUD ─────────────────────────────────────────────────────────────
@@ -426,62 +477,218 @@ app.post('/api/settings', authMiddleware, (req, res) => {
   res.json({ ok: true, settings: updated });
 });
 
-// ── /setup — página con QR e instrucciones ────────────────────────────────────
-app.get('/setup', (req, res) => {
+// ── /setup — página con QR server-side e instrucciones (Deep Night) ──────────
+app.get('/setup', async (req, res) => {
   const ip  = getLocalIP();
   const url = `http://${ip}:${PORT}`;
+
+  let qrDataUrl = '';
+  try {
+    qrDataUrl = await qrcode.toDataURL(url, {
+      width: 240,
+      margin: 2,
+      color: { dark: '#0F172A', light: '#ffffff' },
+      errorCorrectionLevel: 'M',
+    });
+  } catch {
+    qrDataUrl = '';
+  }
+
   res.send(`<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>GigBook — Setup</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@600;700&display=swap" rel="stylesheet">
   <style>
+    /* ── Deep Night Tokens ───────────────────────────────────── */
+    :root {
+      --dn-bg:           #0F172A;
+      --dn-surface:      #111827;
+      --dn-surface2:     #1E293B;
+      --dn-border:       rgba(255,255,255,0.08);
+      --dn-accent:       #38BDF8;
+      --dn-accent-dim:   rgba(56,189,248,0.15);
+      --dn-text:         #F8FAFC;
+      --dn-text-mid:     #94A3B8;
+      --dn-text-dim:     #64748B;
+      --dn-success:      #4ADE80;
+      --dn-danger:       #F87171;
+      --dn-font-ui:      'Syne', system-ui, sans-serif;
+      --dn-font-mono:    'Space Mono', 'Courier New', monospace;
+      --r-sm: 6px; --r-md: 10px; --r-lg: 14px;
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0a0a0a; color: #f0f0f0; font-family: 'Courier New', monospace;
-           min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
-    .card { background: #111; border: 1px solid #2a2a2a; border-radius: 12px;
-            padding: 36px; max-width: 480px; width: 100%; text-align: center; }
-    h1 { font-size: 22px; color: #e8ff3a; letter-spacing: 0.1em; margin-bottom: 6px; }
-    .sub { font-size: 12px; color: #666; margin-bottom: 32px; }
-    .qr-wrap { background: #fff; border-radius: 8px; padding: 20px; display: inline-block; margin-bottom: 28px; }
-    canvas, img { display: block; }
-    .url { background: #1a1a1a; border: 1px solid #333; border-radius: 6px;
-           padding: 12px 16px; font-size: 15px; color: #e8ff3a; margin-bottom: 16px;
-           word-break: break-all; }
-    .token-box { background: #1a1a1a; border: 1px solid #e8ff3a; border-radius: 6px;
-                 padding: 12px 16px; margin-bottom: 24px; }
-    .token-label { font-size: 10px; color: #666; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.1em; }
-    .token-value { font-size: 14px; color: #e8ff3a; word-break: break-all; font-weight: bold; }
-    .copy-btn { background: #e8ff3a; color: #000; border: none; padding: 8px 16px; 
-                border-radius: 6px; font-size: 11px; font-weight: bold; cursor: pointer; 
-                margin-top: 8px; }
-    .steps { text-align: left; border-top: 1px solid #2a2a2a; padding-top: 20px; }
-    .step { display: flex; gap: 12px; margin-bottom: 14px; align-items: flex-start; }
-    .step-num { background: #e8ff3a; color: #000; width: 22px; height: 22px; border-radius: 50%;
-                display: flex; align-items: center; justify-content: center;
-                font-size: 11px; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
-    .step-text { font-size: 13px; color: #aaa; line-height: 1.5; }
-    .step-text strong { color: #f0f0f0; }
-    .ping { font-size: 11px; color: #444; margin-top: 20px; }
-    .ping span { color: #4caf50; }
+    body {
+      background: var(--dn-bg);
+      color: var(--dn-text);
+      font-family: var(--dn-font-ui);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      background: var(--dn-surface);
+      border: 1px solid var(--dn-border);
+      border-radius: var(--r-lg);
+      padding: 36px;
+      max-width: 440px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+
+    h1 {
+      font-family: var(--dn-font-mono);
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--dn-accent);
+      letter-spacing: -0.02em;
+      margin-bottom: 4px;
+    }
+
+    .sub {
+      font-size: 12px;
+      color: var(--dn-text-dim);
+      margin-bottom: 28px;
+      letter-spacing: 0.04em;
+    }
+
+    .qr-wrap {
+      background: #ffffff;
+      border-radius: var(--r-md);
+      padding: 16px;
+      display: inline-block;
+      margin-bottom: 24px;
+    }
+
+    .qr-wrap img, .qr-wrap canvas { display: block; }
+
+    .url-box {
+      background: var(--dn-surface2);
+      border: 1px solid var(--dn-border);
+      border-radius: var(--r-sm);
+      padding: 10px 14px;
+      font-family: var(--dn-font-mono);
+      font-size: 13px;
+      color: var(--dn-accent);
+      margin-bottom: 16px;
+      word-break: break-all;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .url-box:hover { border-color: var(--dn-accent); }
+
+    .token-box {
+      background: var(--dn-surface2);
+      border: 1px solid var(--dn-accent);
+      border-radius: var(--r-sm);
+      padding: 12px 14px;
+      margin-bottom: 20px;
+      text-align: left;
+    }
+    .token-label {
+      font-size: 10px;
+      color: var(--dn-text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 6px;
+    }
+    .token-value {
+      font-size: 12px;
+      color: var(--dn-accent);
+      word-break: break-all;
+      font-family: var(--dn-font-mono);
+      margin-bottom: 8px;
+    }
+    .copy-btn {
+      background: var(--dn-accent);
+      color: var(--dn-bg);
+      border: none;
+      padding: 7px 14px;
+      border-radius: var(--r-sm);
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: var(--dn-font-ui);
+      transition: opacity 0.15s;
+    }
+    .copy-btn:hover { opacity: 0.85; }
+
+    .steps {
+      text-align: left;
+      border-top: 1px solid var(--dn-border);
+      padding-top: 20px;
+    }
+    .step {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 14px;
+      align-items: flex-start;
+    }
+    .step-num {
+      background: var(--dn-accent);
+      color: var(--dn-bg);
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .step-text {
+      font-size: 13px;
+      color: var(--dn-text-mid);
+      line-height: 1.5;
+    }
+    .step-text strong { color: var(--dn-text); }
+
+    .ping {
+      font-size: 11px;
+      color: var(--dn-text-dim);
+      margin-top: 20px;
+      font-family: var(--dn-font-mono);
+    }
+    .ping span { color: var(--dn-success); }
+
+    .status-dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--dn-success);
+      margin-right: 4px;
+      vertical-align: middle;
+    }
   </style>
 </head>
 <body>
   <div class="card">
-    <h1>🎸 GigBook</h1>
+    <h1>GIGBOOK</h1>
     <p class="sub">Conecta tu teléfono al servidor local</p>
 
     <div class="qr-wrap">
-      <canvas id="qr"></canvas>
+      ${qrDataUrl
+        ? `<img src="${qrDataUrl}" width="240" height="240" alt="QR Code">`
+        : `<div style="width:240px;height:240px;display:flex;align-items:center;justify-content:center;background:#f0f0f0;color:#666;font-size:13px;">QR no disponible</div>`
+      }
     </div>
 
-    <div class="url">${url}</div>
+    <div class="url-box" onclick="copyUrl()" title="Clic para copiar">${url}</div>
 
     <div class="token-box">
       <div class="token-label">Token de sincronización</div>
       <div class="token-value" id="token">${AUTH_TOKEN}</div>
-      <button class="copy-btn" onclick="copyToken()">📋 Copiar token</button>
+      <button class="copy-btn" onclick="copyToken()">📋 Copiar</button>
     </div>
 
     <div class="steps">
@@ -499,30 +706,29 @@ app.get('/setup', (req, res) => {
       </div>
       <div class="step">
         <div class="step-num">4</div>
-        <div class="step-text">Si la IP cambia, vuelve a escanear este QR. Para evitarlo, fija la IP de tu Mac en <strong>Preferencias de Red</strong>.</div>
+        <div class="step-text">Si la IP cambia, vuelve a escanear este QR. Para evitarlo, fija la IP de tu PC en <strong>Preferencias de Red</strong>.</div>
       </div>
     </div>
 
-    <p class="ping">Servidor activo · <span>●</span> ${new Date().toLocaleTimeString('es-MX')}</p>
+    <p class="ping">
+      <span class="status-dot"></span>
+      Servidor activo · ${new Date().toLocaleTimeString('es-MX')}
+    </p>
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script>
-    new QRCode(document.getElementById('qr'), {
-      text: '${url}',
-      width: 200,
-      height: 200,
-      colorDark: '#000',
-      colorLight: '#fff',
-      correctLevel: QRCode.CorrectLevel.M
-    });
-    
     function copyToken() {
-      const token = document.getElementById('token').textContent;
-      navigator.clipboard.writeText(token).then(() => {
+      navigator.clipboard.writeText(document.getElementById('token').textContent).then(() => {
         const btn = document.querySelector('.copy-btn');
-        btn.textContent = '✓ Copiado';
-        setTimeout(() => btn.textContent = '📋 Copiar token', 2000);
+        btn.textContent = '✓';
+        setTimeout(() => btn.textContent = '📋 Copiar', 1500);
+      });
+    }
+    function copyUrl() {
+      navigator.clipboard.writeText('${url}').then(() => {
+        const el = document.querySelector('.url-box');
+        el.style.borderColor = '#4ADE80';
+        setTimeout(() => el.style.borderColor = '', 1000);
       });
     }
   </script>
@@ -549,14 +755,15 @@ app.listen(PORT, '0.0.0.0', () => {
   const url = `http://${ip}:${PORT}`;
 
   console.log('\n');
-  console.log('  🎸  GigBook Server v0.2');
+  console.log('  🎸  GigBook Server v0.3');
   console.log('  ─────────────────────────────────────');
   console.log(`  Local:    http://localhost:${PORT}`);
   console.log(`  Red:      ${url}`);
   console.log(`  Setup:    ${url}/setup`);
+  console.log(`  IP WiFi:  ${ip}`);
   console.log(`  Token:    ${AUTH_TOKEN.substring(0, 16)}...`);
   console.log('  ─────────────────────────────────────');
-  console.log('  Escanea el QR en /setup con tu teléfono\n');
+  console.log('  QR generado en /setup (server-side)\n');
 
   qrcode.generate(url, { small: true });
 

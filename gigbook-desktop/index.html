@@ -3,15 +3,34 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' http://localhost:3000; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
   <title>GigBook Server</title>
   <style>
+    /* ── Deep Night Tokens ───────────────────────────────────── */
+    :root {
+      --dn-bg:           #0F172A;
+      --dn-surface:      #111827;
+      --dn-surface2:     #1E293B;
+      --dn-border:       rgba(255,255,255,0.08);
+      --dn-accent:       #38BDF8;
+      --dn-accent-glow:  rgba(56,189,248,0.25);
+      --dn-accent-dim:   rgba(56,189,248,0.12);
+      --dn-text:         #F8FAFC;
+      --dn-text-mid:     #94A3B8;
+      --dn-text-dim:     #64748B;
+      --dn-success:      #4ADE80;
+      --dn-danger:       #F87171;
+      --dn-font-ui:      'Segoe UI', system-ui, sans-serif;
+      --dn-font-mono:    'Courier New', monospace;
+      --r-sm: 6px; --r-md: 10px; --r-lg: 14px;
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    
+
     body {
-      background: #0a0a0a;
-      color: #f0f0f0;
-      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--dn-bg);
+      color: var(--dn-text);
+      font-family: var(--dn-font-ui);
       height: 100vh;
       display: flex;
       flex-direction: column;
@@ -19,63 +38,118 @@
     }
 
     .header {
-      background: #111;
-      padding: 16px;
-      border-bottom: 1px solid #2a2a2a;
+      background: var(--dn-surface);
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--dn-border);
       text-align: center;
+      flex-shrink: 0;
     }
 
     .logo {
-      font-size: 24px;
+      font-family: var(--dn-font-mono);
+      font-size: 22px;
       font-weight: bold;
-      color: #e8ff3a;
-      margin-bottom: 4px;
+      color: var(--dn-accent);
+      margin-bottom: 2px;
+      letter-spacing: -0.02em;
     }
-
-    .subtitle {
-      font-size: 11px;
-      color: #666;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-    }
+    .subtitle { font-size: 10px; color: var(--dn-text-dim); text-transform: uppercase; letter-spacing: 0.1em; }
 
     .status-bar {
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
-      padding: 12px;
-      background: #111;
-      border-bottom: 1px solid #2a2a2a;
+      padding: 10px;
+      background: var(--dn-surface);
+      border-bottom: 1px solid var(--dn-border);
+      flex-shrink: 0;
     }
 
-    .status-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: #666;
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--dn-text-dim); }
+    .status-dot.running {
+      background: var(--dn-success);
+      box-shadow: 0 0 8px rgba(74,222,128,0.5);
+      animation: pulse 2s infinite;
     }
+    .status-dot.stopped { background: var(--dn-danger); }
+    .status-text { font-size: 12px; font-family: var(--dn-font-mono); color: var(--dn-text-mid); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
 
-    .status-dot.running { background: #4caf50; box-shadow: 0 0 8px rgba(76,175,80,0.5); }
-    .status-dot.stopped { background: #ff5533; }
-
-    .status-text {
-      font-size: 12px;
-      font-family: monospace;
-    }
-
-    .content {
+    .main {
       flex: 1;
-      padding: 16px;
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      overflow: hidden;
+    }
+
+    .controls {
+      padding: 14px;
       overflow-y: auto;
+      border-right: 1px solid var(--dn-border);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .qr-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      gap: 10px;
+      background: #0a0f1a;
+    }
+
+    .qr-label {
+      font-size: 10px;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--dn-text-dim);
+    }
+
+    .qr-frame-wrap {
+      background: #ffffff;
+      border-radius: var(--r-md);
+      overflow: hidden;
+      width: 220px;
+      height: 220px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 20px var(--dn-accent-glow);
+    }
+
+    #qrImg { width: 220px; height: 220px; display: none; }
+
+    .qr-placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 220px;
+      height: 220px;
+      color: var(--dn-text-dim);
+      font-size: 12px;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .qr-url {
+      font-family: var(--dn-font-mono);
+      font-size: 11px;
+      color: var(--dn-accent);
+      text-align: center;
+      word-break: break-all;
+      max-width: 220px;
     }
 
     .section {
-      background: #111;
-      border: 1px solid #2a2a2a;
-      border-radius: 8px;
-      padding: 16px;
-      margin-bottom: 12px;
+      background: var(--dn-surface);
+      border: 1px solid var(--dn-border);
+      border-radius: var(--r-md);
+      padding: 14px;
     }
 
     .section-title {
@@ -83,151 +157,97 @@
       font-weight: bold;
       text-transform: uppercase;
       letter-spacing: 0.1em;
-      color: #666;
-      margin-bottom: 12px;
-    }
-
-    .info-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 0;
-      border-bottom: 1px solid #2a2a2a;
-    }
-
-    .info-row:last-child { border-bottom: none; }
-
-    .info-label {
-      font-size: 12px;
-      color: #999;
-    }
-
-    .info-value {
-      font-size: 12px;
-      font-family: monospace;
-      color: #e8ff3a;
+      color: var(--dn-text-dim);
+      margin-bottom: 10px;
     }
 
     .url-box {
-      background: #1a1a1a;
-      border: 1px solid #333;
-      border-radius: 6px;
+      background: var(--dn-surface2);
+      border: 1px solid var(--dn-border);
+      border-radius: var(--r-sm);
       padding: 10px 12px;
-      font-family: monospace;
+      font-family: var(--dn-font-mono);
       font-size: 13px;
-      color: #e8ff3a;
+      color: var(--dn-accent);
       margin-bottom: 8px;
       word-break: break-all;
       cursor: pointer;
+      transition: border-color 0.2s;
     }
+    .url-box:hover { border-color: var(--dn-accent); box-shadow: 0 0 8px var(--dn-accent-glow); }
 
-    .url-box:hover {
-      border-color: #e8ff3a;
-    }
-
-    .btn-row {
-      display: flex;
-      gap: 8px;
-    }
-
+    .btn-row { display: flex; gap: 8px; }
     .btn {
-      flex: 1;
-      padding: 10px 16px;
-      border: none;
-      border-radius: 6px;
-      font-size: 13px;
-      font-weight: bold;
-      cursor: pointer;
-      transition: all 0.15s;
+      flex: 1; padding: 10px 16px; border: none; border-radius: var(--r-sm);
+      font-size: 13px; font-weight: bold; cursor: pointer; transition: all 0.15s;
+      font-family: var(--dn-font-ui);
     }
-
-    .btn-primary {
-      background: #e8ff3a;
-      color: #000;
-    }
-
-    .btn-primary:hover { background: #d4e833; }
-
-    .btn-secondary {
-      background: #222;
-      color: #fff;
-      border: 1px solid #333;
-    }
-
-    .btn-secondary:hover { border-color: #555; }
-
-    .btn-danger {
-      background: #ff5533;
-      color: #fff;
-    }
-
-    .btn-danger:hover { background: #e64a2e; }
+    .btn-primary { background: var(--dn-accent); color: var(--dn-bg); }
+    .btn-primary:hover { background: #5ccffc; box-shadow: 0 0 12px var(--dn-accent-glow); }
+    .btn-secondary { background: var(--dn-surface2); color: var(--dn-text-mid); border: 1px solid var(--dn-border); }
+    .btn-secondary:hover { border-color: var(--dn-accent); color: var(--dn-accent); }
+    .btn-danger { background: rgba(248,113,113,0.15); color: var(--dn-danger); border: 1px solid transparent; }
+    .btn-danger:hover { border-color: var(--dn-danger); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
     .token-box {
-      background: #1a1a1a;
-      border: 1px solid #e8ff3a;
-      border-radius: 6px;
+      background: var(--dn-surface2);
+      border: 1px solid var(--dn-accent);
+      border-radius: var(--r-sm);
       padding: 10px 12px;
-      font-family: monospace;
+      font-family: var(--dn-font-mono);
       font-size: 11px;
-      color: #e8ff3a;
+      color: var(--dn-accent);
       word-break: break-all;
       cursor: pointer;
+      margin-bottom: 6px;
+      transition: box-shadow 0.2s;
     }
+    .token-box:hover { box-shadow: 0 0 8px var(--dn-accent-glow); }
+    .info-text { font-size: 11px; color: var(--dn-text-dim); line-height: 1.5; }
 
     .console {
       background: #000;
-      border: 1px solid #2a2a2a;
-      border-radius: 8px;
-      padding: 12px;
-      font-family: monospace;
+      border: 1px solid var(--dn-border);
+      border-radius: var(--r-sm);
+      padding: 10px;
+      font-family: var(--dn-font-mono);
       font-size: 10px;
-      color: #4caf50;
-      height: 100px;
+      color: var(--dn-success);
+      height: 110px;
       overflow-y: auto;
       white-space: pre-wrap;
       word-break: break-all;
     }
-
-    .console .error { color: #ff5533; }
-    .console .info { color: #666; }
+    .console .error { color: var(--dn-danger); }
+    .console .info  { color: var(--dn-text-dim); }
 
     .footer {
-      padding: 12px;
+      padding: 10px;
       text-align: center;
-      border-top: 1px solid #2a2a2a;
-      background: #111;
-    }
-
-    .footer-text {
+      border-top: 1px solid var(--dn-border);
+      background: var(--dn-surface);
       font-size: 10px;
-      color: #444;
+      color: var(--dn-text-dim);
+      flex-shrink: 0;
     }
 
     .copy-toast {
       position: fixed;
-      bottom: 80px;
+      bottom: 60px;
       left: 50%;
       transform: translateX(-50%);
-      background: #4caf50;
-      color: #fff;
+      background: var(--dn-success);
+      color: #000;
       padding: 8px 16px;
       border-radius: 20px;
       font-size: 12px;
+      font-weight: 600;
       opacity: 0;
       transition: opacity 0.3s;
       pointer-events: none;
     }
-
     .copy-toast.show { opacity: 1; }
-
-    .instructions {
-      font-size: 11px;
-      color: #666;
-      line-height: 1.6;
-    }
-
-    .instructions strong { color: #fff; }
   </style>
 </head>
 <body>
@@ -241,74 +261,98 @@
     <span class="status-text" id="statusText">Iniciando...</span>
   </div>
 
-  <div class="content">
-    <div class="section">
-      <div class="section-title">Conexion</div>
-      <div class="url-box" id="urlBox" title="Clic para copiar">
-        Obteniendo IP...
+  <div class="main">
+    <!-- Columna izquierda: controles -->
+    <div class="controls">
+
+      <div class="section">
+        <div class="section-title">Conexión</div>
+        <div class="url-box" id="urlBox" title="Clic para copiar">Obteniendo IP...</div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btnOpen">Abrir en navegador</button>
+        </div>
       </div>
-      <div class="btn-row">
-        <button class="btn btn-primary" id="btnOpen">Abrir en navegador</button>
+
+      <div class="section">
+        <div class="section-title">Token de sincronización</div>
+        <div class="token-box" id="tokenBox" title="Clic para copiar">Obteniendo...</div>
+        <p class="info-text">Copia este token en la app GigBook de tu teléfono para sincronizar.</p>
       </div>
+
+      <div class="section">
+        <div class="section-title">Compartir acceso</div>
+        <div class="url-box" id="inviteBox" style="font-size:11px;" title="Clic para copiar">Esperando servidor...</div>
+        <p class="info-text" style="margin-bottom:8px;">Envía este enlace. Al abrirlo, la app se conecta automáticamente.</p>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btnCopyInvite">Copiar enlace</button>
+          <button class="btn btn-secondary" id="btnWhatsApp">WhatsApp</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Servidor</div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btnStart" disabled>Iniciar</button>
+          <button class="btn btn-danger"  id="btnStop"  disabled>Detener</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Consola</div>
+        <div class="console" id="console">
+          <span class="info">GigBook Server iniciando...</span>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Instrucciones</div>
+        <p class="info-text">
+          1. Escanea el QR con la cámara de tu teléfono<br>
+          2. O abre <strong style="color:#fff">http://TU-IP:3000</strong><br>
+          3. En Ajustes de la app, pega el token<br>
+          4. Toca "Obtener" para sincronizar
+        </p>
+      </div>
+
     </div>
 
-    <div class="section">
-      <div class="section-title">Token de sincronizacion</div>
-      <div class="token-box" id="tokenBox" title="Clic para copiar">
-        Obteniendo...
+    <!-- Columna derecha: QR -->
+    <div class="qr-panel">
+      <div class="qr-label">Escanear para conectar</div>
+      <div class="qr-frame-wrap">
+        <div class="qr-placeholder" id="qrPlaceholder">Esperando servidor...</div>
+        <img id="qrImg" alt="QR Code">
       </div>
-      <p class="instructions">
-        Copia este token en la app GigBook de tu telefono para sincronizar.
-      </p>
-    </div>
-
-    <div class="section">
-      <div class="section-title">Servidor</div>
-      <div class="btn-row">
-        <button class="btn btn-primary" id="btnStart">Iniciar</button>
-        <button class="btn btn-danger" id="btnStop">Detener</button>
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">Consola</div>
-      <div class="console" id="console">
-        <span class="info">GigBook Server iniciando...</span>
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">Instrucciones</div>
-      <p class="instructions">
-        1. Abre <strong>http://TU-IP:3000</strong> en tu telefono<br>
-        2. Escanea el QR con la camara o ingresa la URL<br>
-        3. Copia el token y pegalo en Ajustes de la app<br>
-        4. Toca "Obtener" para sincronizar
-      </p>
+      <div class="qr-url" id="qrUrl"></div>
     </div>
   </div>
 
-  <div class="footer">
-    <span class="footer-text">Minimizar para dejar corriendo en segundo plano</span>
-  </div>
+  <div class="footer">Minimizar para dejar corriendo en segundo plano</div>
 
-  <div class="copy-toast" id="toast">Copiado al portapapeles!</div>
+  <div class="copy-toast" id="toast">¡Copiado!</div>
 
   <script>
-    const { ipcRenderer } = require('electron');
+    const api = window.electronAPI;
 
-    const statusDot = document.getElementById('statusDot');
-    const statusText = document.getElementById('statusText');
-    const urlBox = document.getElementById('urlBox');
-    const tokenBox = document.getElementById('tokenBox');
-    const consoleEl = document.getElementById('console');
-    const btnOpen = document.getElementById('btnOpen');
-    const btnStart = document.getElementById('btnStart');
-    const btnStop = document.getElementById('btnStop');
-    const toast = document.getElementById('toast');
+    const statusDot    = document.getElementById('statusDot');
+    const statusText   = document.getElementById('statusText');
+    const urlBox       = document.getElementById('urlBox');
+    const tokenBox     = document.getElementById('tokenBox');
+    const consoleEl    = document.getElementById('console');
+    const btnOpen      = document.getElementById('btnOpen');
+    const btnStart     = document.getElementById('btnStart');
+    const btnStop      = document.getElementById('btnStop');
+    const toast        = document.getElementById('toast');
+    const qrImg        = document.getElementById('qrImg');
+    const qrPlaceholder = document.getElementById('qrPlaceholder');
+    const qrUrl        = document.getElementById('qrUrl');
+
+    const inviteBox     = document.getElementById('inviteBox');
+    const btnCopyInvite = document.getElementById('btnCopyInvite');
+    const btnWhatsApp   = document.getElementById('btnWhatsApp');
 
     let serverInfo = null;
-    let token = null;
+    let inviteUrl  = null;
 
     function copyToClipboard(text) {
       navigator.clipboard.writeText(text).then(() => {
@@ -325,7 +369,14 @@
       consoleEl.scrollTop = consoleEl.scrollHeight;
     }
 
-    ipcRenderer.on('server-status', (event, status) => {
+    function showQR(dataUrl, url) {
+      qrImg.src = dataUrl;
+      qrImg.style.display = 'block';
+      qrPlaceholder.style.display = 'none';
+      qrUrl.textContent = url;
+    }
+
+    api.onServerStatus((status) => {
       if (status.running) {
         statusDot.className = 'status-dot running';
         statusText.textContent = 'Servidor activo';
@@ -337,55 +388,67 @@
         statusText.textContent = 'Servidor detenido';
         btnStart.disabled = false;
         btnStop.disabled = true;
-        addConsoleLine(`Servidor detenido (codigo: ${status.code})`, 'error');
+        addConsoleLine('Servidor detenido (código: ' + status.code + ')', 'error');
       }
     });
 
-    ipcRenderer.on('server-info', async (event, info) => {
+    api.onServerInfo((info) => {
       serverInfo = info;
       urlBox.textContent = info.urlLocal;
-      btnOpen.onclick = () => ipcRenderer.invoke('open-url', info.urlLocal);
       urlBox.onclick = () => copyToClipboard(info.urlLocal);
-      addConsoleLine(`URL local: ${info.urlLocal}`, 'info');
-      addConsoleLine(`Puerto: ${info.port}`, 'info');
-
-      // Obtener token
-      try {
-        const response = await fetch(`${info.url}/setup`);
-        const html = await response.text();
-        const match = html.match(/AUTH_TOKEN = '([^']+)'/);
-        if (match) {
-          token = match[1];
-          tokenBox.textContent = token;
-          tokenBox.onclick = () => copyToClipboard(token);
-          addConsoleLine('Token obtenido', 'info');
-        }
-      } catch (e) {
-        addConsoleLine('Esperando servidor...', 'info');
-      }
+      btnOpen.onclick = () => api.invoke('open-url', info.urlLocal);
+      addConsoleLine('URL local: ' + info.urlLocal, 'info');
+      updateInviteUrl(info.urlLocal, null);
     });
 
-    ipcRenderer.on('server-output', (event, data) => {
+    api.onServerToken((token) => {
+      tokenBox.textContent = token;
+      tokenBox.onclick = () => copyToClipboard(token);
+      updateInviteUrl(null, token);
+    });
+
+    api.onServerQR((dataUrl) => {
+      showQR(dataUrl, serverInfo ? serverInfo.urlLocal : '');
+    });
+
+    api.onServerOutput((data) => {
       const lines = data.split('\n').filter(l => l.trim());
       lines.forEach(line => {
-        if (line.includes('error') || line.includes('Error') || line.includes('⚠️')) {
-          addConsoleLine(line, 'error');
-        } else if (line.includes('🎸') || line.includes('http') || line.includes('Token')) {
-          addConsoleLine(line);
-        } else if (line.startsWith('📁') || line.startsWith('📄') || line.startsWith('🔑')) {
-          addConsoleLine(line, 'info');
-        }
+        const type = (line.includes('error') || line.includes('Error') || line.includes('⚠️')) ? 'error'
+                   : (line.includes('🎸') || line.includes('http') || line.includes('Token')) ? ''
+                   : 'info';
+        addConsoleLine(line, type);
       });
     });
 
-    btnStart.onclick = () => {
-      addConsoleLine('Iniciando servidor...', 'info');
-      ipcRenderer.invoke('start-server');
+    let _inviteBaseUrl = null;
+    let _inviteToken   = null;
+
+    function updateInviteUrl(url, token) {
+      if (url)   _inviteBaseUrl = url;
+      if (token) _inviteToken   = token;
+      if (_inviteBaseUrl && _inviteToken) {
+        inviteUrl = _inviteBaseUrl + '?autotoken=' + _inviteToken;
+        inviteBox.textContent = inviteUrl;
+        inviteBox.onclick = () => copyToClipboard(inviteUrl);
+        btnCopyInvite.disabled = false;
+        btnWhatsApp.disabled = false;
+      }
+    }
+
+    btnCopyInvite.onclick = () => { if (inviteUrl) copyToClipboard(inviteUrl); };
+    btnWhatsApp.onclick   = () => {
+      if (!inviteUrl) return;
+      const msg = encodeURIComponent('Abre este enlace para conectar GigBook: ' + inviteUrl);
+      api.invoke('open-url', 'https://wa.me/?text=' + msg);
     };
 
-    btnStop.onclick = () => {
-      ipcRenderer.invoke('stop-server');
+    btnStart.onclick = () => {
+      addConsoleLine('Iniciando servidor...', 'info');
+      api.invoke('start-server');
     };
+
+    btnStop.onclick  = () => api.invoke('stop-server');
   </script>
 </body>
 </html>
