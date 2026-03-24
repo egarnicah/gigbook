@@ -114,7 +114,7 @@ app.use(express.json({ limit: '5mb' }));
 
 // ── API ──────────────────────────────────────────────────────────────────────
 app.get('/api/ping', (req, res) => {
-  res.json({ status: 'ok', version: '0.4', ip: getLocalIP(), port: PORT });
+  res.json({ status: 'ok', version: '0.5', ip: getLocalIP(), port: PORT });
 });
 
 app.get('/api/sync', (req, res) => {
@@ -219,15 +219,8 @@ app.get('/setup', async (req, res) => {
 </html>`);
 });
 
-// ── PWA ────────────────────────────────────────────────────────────────────
-app.get('/', (req, res) => {
-  const ip = getLocalIP();
-  const html = fs.readFileSync(__filename, 'utf8').split('/* PWA_START */')[1].split('/* PWA_END */')[0];
-  res.send(html.replace(/{{IP}}/g, ip).replace(/{{PORT}}/g, PORT).replace(/{{TOKEN}}/g, AUTH_TOKEN));
-});
-
-/* PWA_START */
-<!DOCTYPE html>
+// ── PWA HTML ──────────────────────────────────────────────────────────────────
+const PWA_HTML = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
@@ -236,227 +229,196 @@ app.get('/', (req, res) => {
   <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #0a0a0a; --surface: #111; --surface2: #1a1a1a; --border: #2a2a2a;
-      --accent: #e8ff3a; --accent2: #ff5533; --text: #f0f0f0; --text-dim: #666;
-      --font-ui: 'Syne', system-ui, sans-serif; --font-mono: 'Space Mono', monospace;
+      --bg:#0F172A; --surface:#1E293B; --surface2:#334155; --border:#334155;
+      --accent:#38BDF8; --accent2:#FB923C; --text:#F8FAFC; --text-dim:#64748B; --text-mid:#94A3B8;
+      --font-ui:'Syne',system-ui,sans-serif; --font-mono:'Space Mono',monospace;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: var(--bg); color: var(--text); font-family: var(--font-ui); height: 100vh; overflow: hidden; }
-    
-    .app { display: flex; flex-direction: column; height: 100%; width: 100%; max-width: 1000px; margin: 0 auto; border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
-    
-    .nav { display: flex; align-items: center; justify-content: space-between; padding: 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-    .nav-logo { font-family: var(--font-mono); font-weight: 700; color: var(--accent); }
-    .nav-btn { background: none; border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
-    
-    .screen { flex: 1; overflow-y: auto; padding: 16px 16px 100px; }
-    .section-label { font-size: 11px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; margin: 20px 0 10px; }
-    
-    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 12px; cursor: pointer; }
-    .card:hover { border-color: var(--accent); }
-    .card-title { font-weight: 700; font-size: 16px; }
-    .card-meta { font-size: 12px; color: var(--text-dim); margin-top: 4px; font-family: var(--font-mono); }
-    
-    .song-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
-    .song-info { flex: 1; cursor: pointer; }
-    .song-name { font-weight: 600; }
-    .song-sub { font-size: 11px; color: var(--text-dim); font-family: var(--font-mono); }
-    .bpm-chip { background: var(--surface2); padding: 2px 8px; border-radius: 12px; font-size: 10px; font-family: var(--font-mono); }
-    
-    .tabs { position: fixed; bottom: 0; left: 0; right: 0; display: flex; background: var(--bg); border-top: 1px solid var(--border); max-width: 1000px; margin: 0 auto; }
-    .tab { flex: 1; padding: 12px; text-align: center; color: var(--text-dim); cursor: pointer; font-size: 10px; text-transform: uppercase; font-weight: 700; }
-    .tab.active { color: var(--accent); }
-    .tab-icon { font-size: 18px; display: block; margin-bottom: 4px; }
-    
-    .fab { position: fixed; bottom: 80px; right: 24px; background: var(--accent); color: #000; width: 56px; height: 56px; border-radius: 50%; border: none; font-size: 24px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
-    @media (min-width: 1000px) { .fab { right: calc(50% - 470px); } }
-
-    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
-    .modal { background: var(--surface); border: 1px solid var(--border); padding: 24px; border-radius: 12px; width: 100%; max-width: 400px; }
-    .input { background: var(--surface2); border: 1px solid var(--border); color: #fff; padding: 12px; border-radius: 6px; width: 100%; margin-bottom: 16px; font-family: var(--font-ui); outline: none; }
-    .input:focus { border-color: var(--accent); }
-    .textarea { background: var(--surface2); border: 1px solid var(--border); color: #fff; padding: 12px; border-radius: 6px; width: 100%; height: 300px; font-family: var(--font-mono); margin-bottom: 16px; resize: none; }
-    .btn { background: var(--accent); color: #000; border: none; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; }
-    
-    .stage { position: fixed; inset: 0; background: #000; z-index: 200; display: flex; flex-direction: column; }
-    .stage-top { padding: 16px; display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.5); }
-    .stage-content { flex: 1; overflow-y: auto; padding: 40px 20px 200px; scroll-behavior: smooth; }
-    .stage-line { font-family: var(--font-mono); font-size: 24px; line-height: 1.6; color: #fff; min-height: 1.2em; }
-    .chord { color: var(--accent); font-weight: 700; }
-    .stage-controls { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.9); padding: 20px; border-top: 1px solid #222; }
-    .stage-btn { background: #222; color: #fff; border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; }
-    .stage-btn.active { background: var(--accent); color: #000; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { background:var(--bg); color:var(--text); font-family:var(--font-ui); height:100vh; overflow:hidden; }
+    .app { display:flex; flex-direction:column; height:100%; width:100%; max-width:1000px; margin:0 auto; border-left:1px solid var(--border); border-right:1px solid var(--border); }
+    .nav { display:flex; align-items:center; justify-content:space-between; padding:16px; border-bottom:1px solid var(--border); flex-shrink:0; background:var(--bg); }
+    .nav-logo { font-family:var(--font-mono); font-size:18px; font-weight:700; color:var(--accent); }
+    .nav-sub { font-size:10px; color:var(--text-dim); }
+    .nav-btn { background:none; border:1px solid var(--border); color:var(--text-mid); padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; font-family:var(--font-ui); transition:all .15s; }
+    .nav-btn:hover { border-color:var(--accent); color:var(--accent); }
+    .screen { flex:1; overflow-y:auto; padding:0 16px 100px; }
+    .section-label { font-size:10px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:.12em; margin:20px 0 10px; }
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:10px; cursor:pointer; transition:all .15s; }
+    .card:hover { border-color:var(--accent); }
+    .card-title { font-weight:700; font-size:16px; }
+    .card-meta { font-size:12px; color:var(--text-dim); margin-top:4px; font-family:var(--font-mono); }
+    .song-row { display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid var(--border); }
+    .song-num { font-family:var(--font-mono); font-size:11px; color:var(--text-dim); width:20px; flex-shrink:0; text-align:right; }
+    .song-info { flex:1; cursor:pointer; }
+    .song-name { font-weight:600; font-size:14px; }
+    .song-sub { font-size:11px; color:var(--text-dim); font-family:var(--font-mono); }
+    .bpm-chip { background:var(--surface2); padding:2px 8px; border-radius:12px; font-size:10px; font-family:var(--font-mono); color:var(--text-mid); }
+    .tabs { position:fixed; bottom:0; left:0; right:0; display:flex; background:var(--bg); border-top:1px solid var(--border); max-width:1000px; margin:0 auto; }
+    .tab { flex:1; padding:12px; text-align:center; color:var(--text-dim); cursor:pointer; font-size:10px; text-transform:uppercase; font-weight:700; transition:color .15s; }
+    .tab.active { color:var(--accent); }
+    .tab-icon { font-size:18px; display:block; margin-bottom:4px; }
+    .fab { position:fixed; bottom:80px; right:24px; background:var(--accent); color:#020617; width:56px; height:56px; border-radius:50%; border:none; font-size:24px; font-weight:bold; cursor:pointer; box-shadow:0 4px 20px rgba(56,189,248,.25); transition:transform .15s; }
+    .fab:hover { transform:scale(1.07); }
+    @media(min-width:1000px){.fab{right:calc(50% - 470px)}}
+    .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.8); display:flex; align-items:center; justify-content:center; z-index:100; padding:20px; }
+    .modal { background:var(--surface); border:1px solid var(--border); padding:24px; border-radius:12px; width:100%; max-width:400px; }
+    .modal h3 { font-size:16px; margin-bottom:16px; }
+    .input { background:var(--surface2); border:1px solid var(--border); color:#fff; padding:12px; border-radius:6px; width:100%; margin-bottom:14px; font-family:var(--font-ui); font-size:14px; outline:none; transition:border-color .15s; }
+    .input:focus { border-color:var(--accent); }
+    .textarea { background:var(--surface2); border:1px solid var(--border); color:#fff; padding:12px; border-radius:6px; width:100%; height:280px; font-family:var(--font-mono); font-size:13px; margin-bottom:14px; resize:none; outline:none; transition:border-color .15s; }
+    .textarea:focus { border-color:var(--accent); }
+    .btn { background:var(--accent); color:#020617; border:none; padding:12px; border-radius:6px; font-weight:bold; cursor:pointer; width:100%; font-size:14px; font-family:var(--font-ui); }
+    .btn-ghost { background:none; border:1px solid var(--border); color:var(--text-mid); padding:10px; border-radius:6px; font-weight:600; cursor:pointer; width:100%; font-size:13px; font-family:var(--font-ui); margin-top:8px; }
+    .stage { position:fixed; inset:0; background:#000; z-index:200; display:flex; flex-direction:column; }
+    .stage-top { padding:16px; display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,.5); }
+    .stage-content { flex:1; overflow-y:auto; padding:40px 20px 200px; scroll-behavior:smooth; }
+    .stage-line { font-family:var(--font-mono); font-size:24px; line-height:1.6; color:#fff; min-height:1.2em; }
+    .chord { color:var(--accent); font-weight:700; }
+    .stage-controls { position:fixed; bottom:0; left:0; right:0; background:rgba(0,0,0,.9); padding:20px; border-top:1px solid #222; display:flex; gap:8px; }
+    .stage-btn { background:#222; color:#fff; border:none; padding:10px 20px; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px; font-family:var(--font-mono); }
+    .stage-btn.active { background:var(--accent); color:#020617; }
+    .stage-song-name { font-family:var(--font-mono); font-size:12px; color:rgba(255,255,255,.5); flex:1; text-align:center; }
+    .empty { text-align:center; padding:60px 20px; color:var(--text-dim); }
+    .empty-icon { font-size:48px; margin-bottom:12px; opacity:.3; }
+    .empty-text { font-size:14px; font-weight:600; color:var(--text-mid); margin-bottom:6px; }
+    .empty-sub { font-size:12px; }
   </style>
 </head>
 <body>
   <div id="root"></div>
   <script>
-    const CONFIG = { ip: '{{IP}}', port: '{{PORT}}', token: '{{TOKEN}}' };
-    let state = {
-      tab: 'sets',
-      songs: [],
-      setlists: [],
-      openSetlist: null,
-      editingSong: null,
-      stage: null,
-      playing: false,
-      search: '',
-      modal: null
-    };
-
-    function setState(patch) {
-      state = { ...state, ...patch };
-      render();
+    var CONFIG = { ip:'{{IP}}', port:'{{PORT}}', token:'{{TOKEN}}' };
+    var state = { tab:'sets', songs:[], setlists:[], openSetlist:null, editingSong:null, stage:null, playing:false, search:'', modal:null };
+    function setState(patch) { state = Object.assign({}, state, patch); render(); }
+    function api(path, method, body) {
+      return fetch(path, { method:method||'GET', headers:{'Content-Type':'application/json','Authorization':'Bearer '+CONFIG.token}, body:body?JSON.stringify(body):null }).then(function(r){return r.json()});
     }
-
-    async function api(path, method = 'GET', body = null) {
-      const res = await fetch(path, {
-        method,
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + CONFIG.token },
-        body: body ? JSON.stringify(body) : null
-      });
-      return res.json();
-    }
-
-    async function load() {
-      const data = await api('/api/sync');
-      setState({ songs: data.songs, setlists: data.setlists });
-    }
-
-    async function sync() {
-      await api('/api/sync', 'POST', { songs: state.songs, setlists: state.setlists });
-    }
-
-    let scrollInterval = null;
+    function load() { api('/api/sync').then(function(d){ setState({songs:d.songs||[],setlists:d.setlists||[]}); }); }
+    function sync() { api('/api/sync','POST',{songs:state.songs,setlists:state.setlists}); }
+    var scrollInterval = null;
     function togglePlay() {
-      const playing = !state.playing;
-      setState({ playing });
-      if (playing) {
-        scrollInterval = setInterval(() => {
-          const el = document.querySelector('.stage-content');
-          if (el) el.scrollTop += 1;
-        }, 50);
+      state.playing = !state.playing;
+      setState({playing:state.playing});
+      if(state.playing) {
+        scrollInterval = setInterval(function(){ var el = document.querySelector('.stage-content'); if(el) el.scrollTop += 1; }, 50);
       } else {
         clearInterval(scrollInterval);
       }
     }
-
     function render() {
-      const root = document.getElementById('root');
-      if (state.stage) { root.innerHTML = renderStage(); return; }
-
-      let html = '<div class="app">';
-      html += '<div class="nav"><span class="nav-logo">GIGBOOK</span><span class="nav-btn" onclick="sync()">SYNC</span></div>';
+      var root = document.getElementById('root');
+      if(state.stage) { root.innerHTML = renderStage(); return; }
+      var html = '<div class="app">';
+      html += '<div class="nav"><span class="nav-logo">GIGBOOK</span><span class="nav-sub">v0.5</span><span class="nav-btn" onclick="sync()">SYNC</span></div>';
       html += '<div class="screen">';
-
-      if (state.tab === 'sets') {
-        if (state.openSetlist) {
-          const sl = state.setlists.find(s => s.id === state.openSetlist);
-          html += '<button class="nav-btn" onclick="setState({openSetlist:null})">VOLVER</button>';
-          html += '<p class="section-label">' + sl.name + '</p>';
-          sl.songs.forEach((id, i) => {
-            const s = state.songs.find(x => x.id === id);
-            if (s) html += '<div class="song-row"><span class="song-num">' + (i+1) + '</span><div class="song-info" onclick="setState({stage:{slId:sl.id, idx:i}})">' + s.name + '</div><button class="nav-btn" onclick="removeFromSetlist(\\'' + id + '\\')">X</button></div>';
+      if(state.tab === 'sets') {
+        if(state.openSetlist) {
+          var sl = state.setlists.find(function(s){return s.id===state.openSetlist});
+          html += '<div class="nav"><span class="nav-btn" onclick="setState({openSetlist:null})">&larr; Volver</span><span class="nav-logo" style="font-size:14px">'+sl.name+'</span><span></span></div>';
+          if(!sl.songs.length) html += '<div class="empty"><div class="empty-icon">&#63743;</div><div class="empty-text">Sin canciones</div><div class="empty-sub">A&ntilde;ade canciones desde la lista</div></div>';
+          sl.songs.forEach(function(id,i){
+            var s = state.songs.find(function(x){return x.id===id});
+            if(s) html += '<div class="song-row"><span class="song-num">'+(i+1)+'</span><div class="song-info" onclick="setState({stage:{slId:sl.id,idx:'+i+'}})"><div class="song-name">'+s.name+'</div><div class="song-sub">'+s.bpm+' BPM</div></div><button class="nav-btn" onclick="event.stopPropagation();removeFromSetlist(&quot;'+id+'&quot;)">X</button></div>';
           });
-          html += '<p class="section-label">AÑADIR CANCION</p>';
-          state.songs.filter(s => !sl.songs.includes(s.id)).forEach(s => {
-            html += '<div class="song-row" onclick="addToSetlist(\\'' + s.id + '\\')">' + s.name + '</div>';
+          html += '<p class="section-label">A&Ntilde;ADIR CANCIONES</p>';
+          state.songs.filter(function(s){return !sl.songs.includes(s.id)}).forEach(function(s){
+            html += '<div class="song-row" onclick="addToSetlist(&quot;'+s.id+'&quot;)"><div class="song-info"><div class="song-name">'+s.name+'</div><div class="song-sub">'+s.bpm+' BPM</div></div></div>';
           });
         } else {
           html += '<p class="section-label">SETLISTS</p>';
-          state.setlists.forEach(sl => {
-            html += '<div class="card" onclick="setState({openSetlist:\\'' + sl.id + '\\'})"><div class="card-title">' + sl.name + '</div><div class="card-meta">' + sl.songs.length + ' canciones</div></div>';
-          });
+          if(!state.setlists.length) html += '<div class="empty"><div class="empty-icon">&#128203;</div><div class="empty-text">Sin setlists</div><div class="empty-sub">Toca + para crear tu primera</div></div>';
+          state.setlists.forEach(function(sl2){ html += '<div class="card" onclick="setState({openSetlist:&quot;'+sl2.id+'&quot;})"><div class="card-title">'+sl2.name+'</div><div class="card-meta">'+sl2.songs.length+' canciones</div></div>'; });
         }
-      } else if (state.tab === 'songs') {
-        if (state.editingSong) {
-          const s = state.songs.find(x => x.id === state.editingSong) || { name: '', bpm: 120, content: '' };
-          html += '<p class="section-label">EDITAR CANCION</p>';
-          html += '<input id="edName" class="input" value="' + s.name + '" placeholder="Nombre">';
-          html += '<input id="edBpm" class="input" type="number" value="' + s.bpm + '" placeholder="BPM">';
-          html += '<textarea id="edContent" class="textarea" placeholder="Contenido">' + (s.content||'') + '</textarea>';
+      } else if(state.tab === 'songs') {
+        if(state.editingSong) {
+          var s2 = state.songs.find(function(x){return x.id===state.editingSong}) || {name:'',bpm:120,content:''};
+          html += '<p class="section-label">'+(state.editingSong==='new'?'NUEVA CANCI&Oacute;N':'EDITAR CANCI&Oacute;N')+'</p>';
+          html += '<input id="edName" class="input" value="'+s2.name+'" placeholder="Nombre de la canci&oacute;n">';
+          html += '<input id="edBpm" class="input" type="number" value="'+s2.bpm+'" placeholder="BPM" style="max-width:120px">';
+          html += '<textarea id="edContent" class="textarea" placeholder="Contenido (usa [Am] para acordes)">'+(s2.content||'')+'</textarea>';
           html += '<button class="btn" onclick="saveSong()">GUARDAR</button>';
-          html += '<button class="nav-btn" style="margin-top:10px" onclick="setState({editingSong:null})">CANCELAR</button>';
+          html += '<button class="btn-ghost" onclick="setState({editingSong:null})">CANCELAR</button>';
         } else {
           html += '<p class="section-label">CANCIONES</p>';
-          state.songs.forEach(s => {
-            html += '<div class="song-row"><div class="song-info" onclick="setState({editingSong:\\'' + s.id + '\\'})">' + s.name + '</div><span class="bpm-chip">' + s.bpm + '</span></div>';
-          });
+          if(!state.songs.length) html += '<div class="empty"><div class="empty-icon">&#127925;</div><div class="empty-text">Sin canciones</div><div class="empty-sub">Toca + para a&ntilde;adir tu primera</div></div>';
+          state.songs.forEach(function(s3){ html += '<div class="song-row"><div class="song-info" onclick="setState({editingSong:&quot;'+s3.id+'&quot;})"><div class="song-name">'+s3.name+'</div><div class="song-sub">'+(s3.content||'').split(/\\n/).length+' l&iacute;neas</div></div><span class="bpm-chip">'+s3.bpm+'</span></div>'; });
         }
       }
-
-      html += '</div>'; // screen
-      html += '<div class="tabs">';
-      html += '<div class="tab ' + (state.tab==='sets'?'active':'') + '" onclick="setState({tab:\\'sets\\', openSetlist:null})">Sets</div>';
-      html += '<div class="tab ' + (state.tab==='songs'?'active':'') + '" onclick="setState({tab:\\'songs\\', editingSong:null})">Songs</div>';
       html += '</div>';
-      if (!state.editingSong && !state.openSetlist) {
-        html += '<button class="fab" onclick="onFab()">+</button>';
+      html += '<div class="tabs">';
+      html += '<div class="tab '+(state.tab==='sets'?'active':'')+'" onclick="setState({tab:&apos;sets&apos;,openSetlist:null})"><span class="tab-icon">&#128203;</span>Sets</div>';
+      html += '<div class="tab '+(state.tab==='songs'?'active':'')+'" onclick="setState({tab:&apos;songs&apos;,editingSong:null})"><span class="tab-icon">&#127925;</span>Songs</div>';
+      html += '</div>';
+      if(!state.editingSong && !state.openSetlist) html += '<button class="fab" onclick="onFab()">+</button>';
+      html += '</div>';
+      if(state.modal) {
+        html += '<div class="modal-overlay" onclick="if(event.target===this)setState({modal:null})"><div class="modal"><h3>Nuevo Setlist</h3><input id="mName" class="input" placeholder="Nombre del setlist"><button class="btn" onclick="createSetlist()">CREAR</button><button class="btn-ghost" onclick="setState({modal:null})">CANCELAR</button></div></div>';
       }
-      html += '</div>'; // app
-
-      if (state.modal) {
-        html += '<div class="modal-overlay"><div class="modal"><h3>Nuevo Setlist</h3><input id="mName" class="input" placeholder="Nombre"><button class="btn" onclick="createSetlist()">CREAR</button><button class="nav-btn" style="margin-top:10px" onclick="setState({modal:null})">CERRAR</button></div></div>';
-      }
-
       root.innerHTML = html;
     }
-
     function renderStage() {
-      const sl = state.setlists.find(s => s.id === state.stage.slId);
-      const song = state.songs.find(s => s.id === sl.songs[state.stage.idx]);
-      const lines = (song.content || '').split(\'\\n\');
-      let html = '<div class="stage"><div class="stage-top"><button class="stage-btn" onclick="setState({stage:null, playing:false});clearInterval(scrollInterval)">SALIR</button><span>' + (state.stage.idx+1) + ' / ' + sl.songs.length + '</span></div>';
-      html += '<div class="stage-content"><h1 style="color:var(--accent);margin-bottom:30px">' + song.name + '</h1>';
-      lines.forEach(l => {
-        const isChord = l.trim() && !l.replace(/\\b[A-G][#b]?(?:m|maj|min|dim|7|9)?\\b/g, '').trim();
-        html += '<div class="stage-line ' + (isChord?\'chord\':\'\') + '">' + l.replace(/\\[(.+?)\\]/g, \'<span class="chord">$1</span>\') + '</div>';
+      var sl = state.setlists.find(function(s){return s.id===state.stage.slId});
+      if(!sl) return '<div class="stage"><div class="stage-top"><button class="stage-btn" onclick="setState({stage:null})">SALIR</button></div></div>';
+      var song = state.songs.find(function(s){return s.id===sl.songs[state.stage.idx]});
+      if(!song) return '<div class="stage"><div class="stage-top"><button class="stage-btn" onclick="setState({stage:null})">SALIR</button></div></div>';
+      var lines = (song.content||'').split('\\n');
+      var html = '<div class="stage"><div class="stage-top"><button class="stage-btn" onclick="setState({stage:null,playing:false});clearInterval(scrollInterval)">SALIR</button><span class="stage-song-name">'+song.name+'</span><span style="font-family:var(--font-mono);font-size:12px;color:rgba(255,255,255,.4)">'+(state.stage.idx+1)+' / '+sl.songs.length+'</span></div>';
+      html += '<div class="stage-content"><h1 style="color:var(--accent);margin-bottom:30px;font-family:var(--font-mono);font-size:28px">'+song.name+'</h1>';
+      lines.forEach(function(l){
+        var isChord = /\\[(.+?)\\]/.test(l);
+        html += '<div class="stage-line">' + l.replace(/\\[(.+?)\\]/g, '<span class="chord">$1</span>') + '</div>';
       });
-      html += '</div>';
-      html += '<div class="stage-controls"><button class="stage-btn ' + (state.playing?\'active\':\'\') + '" onclick="togglePlay()">' + (state.playing?\'PAUSE\':\'PLAY\') + '</button></div></div>';
+      html += '</div><div class="stage-controls"><button class="stage-btn" onclick="prevSong()">&lt;</button><button class="stage-btn '+(state.playing?'active':'')+'" onclick="togglePlay()">'+(state.playing?'PAUSE':'PLAY')+'</button><button class="stage-btn" onclick="nextSong()">&gt;</button></div></div>';
       return html;
     }
-
-    window.onFab = () => { if (state.tab === 'sets') setState({ modal: 'setlist' }); else setState({ editingSong: 'new' }); };
-    window.createSetlist = () => { const name = document.getElementById('mName').value; if (!name) return; const sl = { id: 'sl_' + Date.now(), name, songs: [] }; setState({ setlists: [...state.setlists, sl], modal: null }); sync(); };
-    window.saveSong = () => {
-      const id = state.editingSong === 'new' ? 's_' + Date.now() : state.editingSong;
-      const name = document.getElementById('edName').value;
-      const bpm = parseInt(document.getElementById('edBpm').value) || 120;
-      const content = document.getElementById('edContent').value;
-      const song = { id, name, bpm, content, updatedAt: Date.now() };
-      const songs = state.editingSong === 'new' ? [...state.songs, song] : state.songs.map(s => s.id === id ? song : s);
-      setState({ songs, editingSong: null });
+    function prevSong() {
+      var sl = state.setlists.find(function(s){return s.id===state.stage.slId});
+      if(state.stage.idx > 0) setState({stage:{slId:sl.id,idx:state.stage.idx-1}});
+    }
+    function nextSong() {
+      var sl = state.setlists.find(function(s){return s.id===state.stage.slId});
+      if(state.stage.idx < sl.songs.length-1) setState({stage:{slId:sl.id,idx:state.stage.idx+1}});
+    }
+    window.onFab = function() { if(state.tab==='sets') setState({modal:'setlist'}); else setState({editingSong:'new'}); };
+    window.createSetlist = function() { var name = document.getElementById('mName').value; if(!name) return; var sl = {id:'sl_'+Date.now(),name:name,songs:[]}; setState({setlists:state.setlists.concat([sl]),modal:null}); sync(); };
+    window.saveSong = function() {
+      var id = state.editingSong==='new' ? 's_'+Date.now() : state.editingSong;
+      var name = document.getElementById('edName').value;
+      var bpm = parseInt(document.getElementById('edBpm').value) || 120;
+      var content = document.getElementById('edContent').value;
+      var song = {id:id,name:name,bpm:bpm,content:content,updatedAt:Date.now()};
+      var songs = state.editingSong==='new' ? state.songs.concat([song]) : state.songs.map(function(s){return s.id===id?song:s});
+      setState({songs:songs,editingSong:null});
       sync();
     };
-    window.addToSetlist = (id) => { const setlists = state.setlists.map(sl => sl.id === state.openSetlist ? { ...sl, songs: [...sl.songs, id] } : sl); setState({ setlists }); sync(); };
-    window.removeFromSetlist = (id) => { const setlists = state.setlists.map(sl => sl.id === state.openSetlist ? { ...sl, songs: sl.songs.filter(x => x !== id) } : sl); setState({ setlists }); sync(); };
-
+    window.addToSetlist = function(id) { var setlists = state.setlists.map(function(sl){return sl.id===state.openSetlist?Object.assign({},sl,{songs:sl.songs.concat([id])}):sl}); setState({setlists:setlists}); sync(); };
+    window.removeFromSetlist = function(id) { var setlists = state.setlists.map(function(sl){return sl.id===state.openSetlist?Object.assign({},sl,{songs:sl.songs.filter(function(x){return x!==id})}):sl}); setState({setlists:setlists}); sync(); };
     load();
     render();
   </script>
 </body>
-</html>
-/* PWA_END */
+</html>`;
+
+// ── PWA Routes ───────────────────────────────────────────────────────────────
+app.get('/', (req, res) => {
+  const ip = getLocalIP();
+  res.send(PWA_HTML.replace(/\{\{IP\}\}/g, ip).replace(/\{\{PORT\}\}/g, PORT).replace(/\{\{TOKEN\}\}/g, AUTH_TOKEN));
+});
 
 // ─── ARRANQUE ─────────────────────────────────────────────────────────────────
 bootstrap();
 
 app.listen(PORT, '0.0.0.0', () => {
   const ip = getLocalIP();
-  const url = `http://${ip}:${PORT}`;
+  const url = 'http://' + ip + ':' + PORT;
 
-  console.log(\'\\n\');
-  console.log(\'  GigBook Server v0.4\');
-  console.log(\'  ------------------------------------\');
-  console.log(\'  Local:    http://localhost:\' + PORT);
-  console.log(\'  Red:      \' + url);
-  console.log(\'  IP WiFi:  \' + ip);
-  console.log(\'  ------------------------------------\');
-  console.log(\'  QR Generado en consola y en /setup\');
-  console.log(\'\');
-
-  qrcode.generate(url, { small: true });
-
-  console.log(\'\\n  Ctrl+C para detener\\n\');
+  console.log('\n');
+  console.log('  GigBook Server v0.5');
+  console.log('  ------------------------------------');
+  console.log('  Local:    http://localhost:' + PORT);
+  console.log('  Red:      ' + url);
+  console.log('  IP WiFi:  ' + ip);
+  console.log('  ------------------------------------');
+  console.log('  QR disponible en /setup');
+  console.log('\n  Ctrl+C para detener\n');
 });
